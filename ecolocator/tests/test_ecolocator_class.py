@@ -437,9 +437,13 @@ def test_shap_values_raw_satisfies_additivity_location(example_data, tmp_path):
     )
     assert len(raw) == 1
 
-    train_genotypes, train_samples, train_snp_ids = model._get_genotypes(str(matrix_path))
+    train_genotypes, train_samples, train_snp_ids = model._get_genotypes(
+        str(matrix_path)
+    )
     train_genotypes = train_genotypes[model._kept_snp_indices_, :, :]
-    train_ac = replace_missing_data(train_genotypes, rng=np.random.default_rng(model.seed_))
+    train_ac = replace_missing_data(
+        train_genotypes, rng=np.random.default_rng(model.seed_)
+    )
     _, train_locs = sort_samples(train_samples, str(sample_data_path))
     known = np.argwhere(~np.isnan(train_locs[:, 0])).flatten()
     traingen = np.transpose(train_ac[:, known]).astype(np.float32)
@@ -453,7 +457,9 @@ def test_shap_values_raw_satisfies_additivity_location(example_data, tmp_path):
 
     snp_ids = train_snp_ids[model._kept_snp_indices_]
 
-    model_loc = tf.keras.Model(inputs=model.model_.input, outputs=model.model_.output[0])
+    model_loc = tf.keras.Model(
+        inputs=model.model_.input, outputs=model.model_.output[0]
+    )
     raw_loc = model_loc.predict(predgen, verbose=0)
     baseline_loc = model_loc.predict(traingen, verbose=0).mean(axis=0)
 
@@ -492,9 +498,13 @@ def test_shap_values_raw_satisfies_additivity_env(example_data, tmp_path):
     )
     assert len(raw) == 1
 
-    train_genotypes, train_samples, train_snp_ids = model._get_genotypes(str(matrix_path))
+    train_genotypes, train_samples, train_snp_ids = model._get_genotypes(
+        str(matrix_path)
+    )
     train_genotypes = train_genotypes[model._kept_snp_indices_, :, :]
-    train_ac = replace_missing_data(train_genotypes, rng=np.random.default_rng(model.seed_))
+    train_ac = replace_missing_data(
+        train_genotypes, rng=np.random.default_rng(model.seed_)
+    )
     _, train_locs = sort_samples(train_samples, str(sample_data_path))
     known = np.argwhere(~np.isnan(train_locs[:, 0])).flatten()
     traingen = np.transpose(train_ac[:, known]).astype(np.float32)
@@ -508,7 +518,9 @@ def test_shap_values_raw_satisfies_additivity_env(example_data, tmp_path):
 
     snp_ids = train_snp_ids[model._kept_snp_indices_]
 
-    model_env = tf.keras.Model(inputs=model.model_.input, outputs=model.model_.output[1])
+    model_env = tf.keras.Model(
+        inputs=model.model_.input, outputs=model.model_.output[1]
+    )
     raw_env = model_env.predict(predgen, verbose=0)
     baseline_env = model_env.predict(traingen, verbose=0).mean(axis=0)
 
@@ -517,4 +529,3 @@ def test_shap_values_raw_satisfies_additivity_env(example_data, tmp_path):
         shap_sum = sum(row[f"{snp_id}_{cov}"] for snp_id in snp_ids)
         identity = shap_sum + baseline_env[out_idx]
         assert np.isclose(identity, raw_env[0, out_idx], atol=2.0)
-
