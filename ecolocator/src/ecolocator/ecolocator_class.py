@@ -362,7 +362,7 @@ class EcoLocator:
         train_ac = replace_missing_data(train_genotypes, rng=rng)
         _, train_locs = sort_samples(train_samples, train_sample_data_path)
         known = np.argwhere(~np.isnan(train_locs[:, 0])).flatten()
-        traingen = np.transpose(train_ac[:, known])
+        traingen = np.transpose(train_ac[:, known]).astype(np.float32)
 
         # load and filter pred genos
         pred_genotypes, pred_samples, _ = self._get_genotypes(genotype_path)
@@ -370,7 +370,7 @@ class EcoLocator:
         pred_ac = replace_missing_data(pred_genotypes)
         _, pred_locs = sort_samples(pred_samples, sample_data_path)
         unknown = np.argwhere(np.isnan(pred_locs[:, 0])).flatten()
-        predgen = np.transpose(pred_ac[:, unknown])
+        predgen = np.transpose(pred_ac[:, unknown]).astype(np.float32)
 
         # build bg
         bg_size = min(background_size, traingen.shape[0])
