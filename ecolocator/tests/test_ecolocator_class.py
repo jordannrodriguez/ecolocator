@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
 import pytest
+import tensorflow as tf
 from ecolocator import EcoLocator
+from ecolocator.utils import replace_missing_data, sort_samples
 
 
 def test_fit_returns_self(example_data):
@@ -405,3 +407,114 @@ def test_shap_values_raw_no_covariates(no_covariate_data, tmp_path):
     assert (
         len(result.columns) == 1 + n_snps * 2
     )  # sampleID + _x and _y per SNP, no env cols
+
+
+def test_shap_values_raw_satisfies_additivity_location(example_data, tmp_path):
+    """test that signed per-SNP SHAP values for the location head sum to (model output - baseline)"""
+    _, _, matrix_path, sample_data_path = example_data
+    model = EcoLocator(nlayers=2, width=32)
+    model.fit(
+        str(matrix_path),
+        str(sample_data_path),
+        max_epochs=5,
+        patience=3,
+        train_split=0.6,
+        min_mac=1,
+        seed=1,
+    )
+
+    sample_data = pd.read_csv(sample_data_path, sep="\t")
+    sample_data.iloc[0, 1:] = np.nan
+    masked_path = tmp_path / "masked.tsv"
+    sample_data.to_csv(masked_path, sep="\t", index=False)
+
+    raw = model.shap_values(
+        str(matrix_path),
+        str(masked_path),
+        str(matrix_path),
+        str(sample_data_path),
+        raw=True,
+    )
+    assert len(raw) == 1
+
+    train_genotypes, train_samples, train_snp_ids = model._get_genotypes(str(matrix_path))
+    train_genotypes = train_genotypes[model._kept_snp_indices_, :, :]
+    train_ac = replace_missing_data(train_genotypes, rng=np.random.default_rng(model.seed_))
+    _, train_locs = sort_samples(train_samples, str(sample_data_path))
+    known = np.argwhere(~np.isnan(train_locs[:, 0])).flatten()
+    traingen = np.transpose(train_ac[:, known]).astype(np.float32)
+
+    pred_genotypes, pred_samples, _ = model._get_genotypes(str(matrix_path))
+    pred_genotypes = pred_genotypes[model._kept_snp_indices_, :, :]
+    pred_ac = replace_missing_data(pred_genotypes)
+    _, pred_locs = sort_samples(pred_samples, str(masked_path))
+    unknown = np.argwhere(np.isnan(pred_locs[:, 0])).flatten()
+    predgen = np.transpose(pred_ac[:, unknown]).astype(np.float32)
+
+    snp_ids = train_snp_ids[model._kept_snp_indices_]
+
+    model_loc = tf.keras.Model(inputs=model.model_.input, outputs=model.model_.output[0])
+    raw_loc = model_loc.predict(predgen, verbose=0)
+    baseline_loc = model_loc.predict(traingen, verbose=0).mean(axis=0)
+
+    row = raw.iloc[0]
+    for out_idx, out_name in enumerate(["x", "y"]):
+        shap_sum = sum(row[f"{snp_id}_{out_name}"] for snp_id in snp_ids)
+        identity = shap_sum + baseline_loc[out_idx]
+        assert np.isclose(identity, raw_loc[0, out_idx], atol=2.0)
+
+
+def test_shap_values_raw_satisfies_additivity_env(example_data, tmp_path):
+    """test that signed per-SNP SHAP values for the env head sum to (model output - baseline)"""
+    _, _, matrix_path, sample_data_path = example_data
+    model = EcoLocator(nlayers=2, width=32)
+    model.fit(
+        str(matrix_path),
+        str(sample_data_path),
+        max_epochs=5,
+        patience=3,
+        train_split=0.6,
+        min_mac=1,
+        seed=1,
+    )
+
+    sample_data = pd.read_csv(sample_data_path, sep="\t")
+    sample_data.iloc[0, 1:] = np.nan
+    masked_path = tmp_path / "masked.tsv"
+    sample_data.to_csv(masked_path, sep="\t", index=False)
+
+    raw = model.shap_values(
+        str(matrix_path),
+        str(masked_path),
+        str(matrix_path),
+        str(sample_data_path),
+        raw=True,
+    )
+    assert len(raw) == 1
+
+    train_genotypes, train_samples, train_snp_ids = model._get_genotypes(str(matrix_path))
+    train_genotypes = train_genotypes[model._kept_snp_indices_, :, :]
+    train_ac = replace_missing_data(train_genotypes, rng=np.random.default_rng(model.seed_))
+    _, train_locs = sort_samples(train_samples, str(sample_data_path))
+    known = np.argwhere(~np.isnan(train_locs[:, 0])).flatten()
+    traingen = np.transpose(train_ac[:, known]).astype(np.float32)
+
+    pred_genotypes, pred_samples, _ = model._get_genotypes(str(matrix_path))
+    pred_genotypes = pred_genotypes[model._kept_snp_indices_, :, :]
+    pred_ac = replace_missing_data(pred_genotypes)
+    _, pred_locs = sort_samples(pred_samples, str(masked_path))
+    unknown = np.argwhere(np.isnan(pred_locs[:, 0])).flatten()
+    predgen = np.transpose(pred_ac[:, unknown]).astype(np.float32)
+
+    snp_ids = train_snp_ids[model._kept_snp_indices_]
+
+    model_env = tf.keras.Model(inputs=model.model_.input, outputs=model.model_.output[1])
+    raw_env = model_env.predict(predgen, verbose=0)
+    baseline_env = model_env.predict(traingen, verbose=0).mean(axis=0)
+
+    row = raw.iloc[0]
+    for out_idx, cov in enumerate(model.cov_names_):
+        shap_sum = sum(row[f"{snp_id}_{cov}"] for snp_id in snp_ids)
+        identity = shap_sum + baseline_env[out_idx]
+        assert np.isclose(identity, raw_env[0, out_idx], atol=2.0)
+
